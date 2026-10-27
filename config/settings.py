@@ -31,6 +31,8 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 # Application definition
 
 INSTALLED_APPS = [
+    'channels',
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -38,7 +40,6 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-
     'users',
     'chat',
     'core',
@@ -71,6 +72,8 @@ TEMPLATES = [
     },
 ]
 
+
+ASGI_APPLICATION = "config.asgi.application"
 WSGI_APPLICATION = 'config.wsgi.application'
 
 
@@ -139,3 +142,12 @@ REST_FRAMEWORK = {
 }
 
 LOGIN_REDIRECT_URL = "/api/"
+
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {
+            "hosts": [("127.0.0.1", 6379)],
+        },
+    },
+}

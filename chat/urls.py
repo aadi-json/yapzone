@@ -1,9 +1,9 @@
 from django.urls import path
-
 from .views import (
     conversations,
+    create_conversation,
     conversation_messages,
-    create_message,   
+    create_message,
 )
 
 urlpatterns = [
@@ -11,6 +11,11 @@ urlpatterns = [
         "conversations/",
         conversations,
         name="conversations",
+    ),
+    path(
+        "conversations/create/",
+        create_conversation,
+        name="create-conversation",
     ),
     path(
         "conversations/<int:conversation_id>/messages/",

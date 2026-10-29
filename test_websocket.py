@@ -1,23 +1,41 @@
 import asyncio
 import json
+import os
 
 import websockets
 
 
 async def test_websocket():
-    uri = "ws://127.0.0.1:8000/ws/chat/1/"
+    token = os.environ.get("YAPZONE_TOKEN")
 
-    async with websockets.connect(uri) as websocket:
-        print("WebSocket connected successfully!")
+    if not token:
+        raise ValueError("Set the YAPZONE_TOKEN environment variable.")
 
-        await websocket.send(
-            json.dumps({
-                "message": "Hello from YapZone!"
-            })
-        )
+    conversation_id = 2
+
+    uri = f"ws://127.0.0.1:8000/ws/chat/{conversation_id}/"
+
+    headers = {
+        "Authorization": f"Token {token}"
+    }
+
+    async with websockets.connect(
+        uri,
+        additional_headers=headers,
+    ) as websocket:
+        print("Connected to YapZone!")
+
+        message = {
+            "message": "Hello from YapZone WebSocket!"
+        }
+
+        await websocket.send(json.dumps(message))
+        print("Message sent!")
 
         response = await websocket.recv()
-        print("Server response:", response)
+        data = json.loads(response)
+
+        print("Received message:", data)
 
 
 asyncio.run(test_websocket())

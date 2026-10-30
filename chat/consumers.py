@@ -4,6 +4,8 @@ from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .models import Conversation, Message
+from .connection_manager import connection_manager
+from .presence import set_user_online, set_user_offline
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -15,16 +17,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         self.room_group_name = f"chat_{self.conversation_id}"
 
-        # Get the authenticated Django user.
         user = self.scope["user"]
 
-        # Reject anonymous users.
         if not user.is_authenticated:
             await self.close()
             return
 
-        # Verify that the user belongs to this conversation.
-        is_participant = await self.check_participant(user.id)
+        self.user_id = user.id
+        self.username = user.username
+
+        is_participant = await self.check_participant(self.user_id)
 
         if not is_participant:
             await self.close()
@@ -36,10 +38,49 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.channel_name,
         )
 
+        # Track this WebSocket connection in Redis.
+        connection_count = await connection_manager.add_connection(
+            self.user_id,
+            self.channel_name,
+        )
+
+        # Mark online only when the first connection is established.
+        if connection_count == 1:
+            await set_user_online(self.user_id)
+
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "presence_update",
+                    "user_id": self.user_id,
+                    "username": self.username,
+                    "status": "online",
+                },
+            )
+
         await self.accept()
 
     async def disconnect(self, close_code):
         if hasattr(self, "room_group_name"):
+            connection_count = await connection_manager.remove_connection(
+                self.user_id,
+                self.channel_name,
+            )
+
+            # Mark offline only after the last connection disconnects.
+            if connection_count == 0:
+                await set_user_offline(self.user_id)
+
+                await self.channel_layer.group_send(
+                    self.room_group_name,
+                    {
+                        "type": "presence_update",
+                        "user_id": self.user_id,
+                        "username": self.username,
+                        "status": "offline",
+                    },
+                )
+
             await self.channel_layer.group_discard(
                 self.room_group_name,
                 self.channel_name,
@@ -70,9 +111,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
             return
 
-        # Save the message using the authenticated user.
         message = await self.save_message(
-            self.scope["user"].id,
+            self.user_id,
             content,
         )
 
@@ -116,4 +156,12 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "message": event["message"],
             "sender": event["sender"],
             "timestamp": event["timestamp"],
+        }))
+
+    async def presence_update(self, event):
+        await self.send(text_data=json.dumps({
+            "type": "presence",
+            "user_id": event["user_id"],
+            "username": event["username"],
+            "status": event["status"],
         }))

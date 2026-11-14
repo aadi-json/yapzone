@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
+from rest_framework.pagination import PageNumberPagination
 
 User = get_user_model()
 
@@ -128,3 +129,8 @@ def create_message(request, conversation_id):
         serializer.errors,
         status=status.HTTP_400_BAD_REQUEST,
     )
+
+class MessagePagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = "page_size"
+    max_page_size = 50

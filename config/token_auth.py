@@ -12,10 +12,17 @@ def get_user_from_token(token_key):
     except Token.DoesNotExist:
         return AnonymousUser()
 
+
 class TokenAuthMiddleware(BaseMiddleware):
+
     async def __call__(self, scope, receive, send):
+        scope = dict(scope)
+
         headers = dict(scope.get("headers", []))
-        authorization = headers.get(b"authorization", b"").decode()
+        authorization = headers.get(b"authorization", b"").decode("utf-8").strip()
+        print("RECEIVED HEADERS:", list(headers.keys()))
+        print("AUTHORIZATION HEADER PRESENT:", bool(authorization))
+        print("AUTHORIZATION PREFIX:", authorization.split(" ")[0] if authorization else "MISSING")
 
         if authorization.startswith("Token "):
             token_key = authorization.split(" ", 1)[1].strip()

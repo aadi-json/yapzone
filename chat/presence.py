@@ -23,3 +23,4 @@ def get_user_status(user_id):
         "username",
         "is_online",
     ).first()
+

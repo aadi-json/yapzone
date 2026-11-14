@@ -7,6 +7,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from .models import Conversation, Message
 from .connection_manager import connection_manager
 from .presence import set_user_online, set_user_offline
+from django.utils import timezone
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
@@ -203,8 +204,18 @@ class ChatConsumer(AsyncWebsocketConsumer):
         except asyncio.CancelledError:
             pass
 
-    # Database operations
+        async def delivery_receipt(self, event):
+            # Only notify the original sender.
+            if self.user_id != event["sender_id"]:
+                return
 
+            await self.send(text_data=json.dumps({
+                "type": "delivery_receipt",
+                "message_id": event["message_id"],
+                "status": "delivered",
+            }))
+
+    # Database operations
     @database_sync_to_async
     def check_participant(self, user_id):
 
@@ -229,13 +240,50 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "message_id": message.id,
             "message": message.content,
             "sender": message.sender.username,
+            "sender_id": message.sender_id,
             "timestamp": message.timestamp.isoformat(),
         }
 
+    #function to handle read-recipt
+    @database_sync_to_async
+    def mark_message_delivered(self, message_id):
+        message = Message.objects.filter(
+            id=message_id,
+            conversation_id=self.conversation_id,
+            is_delivered=False,
+        ).first()
+
+        if not message:
+            return False
+
+        message.is_delivered = True
+        message.delivered_at = timezone.now()
+
+        message.save(
+            update_fields=["is_delivered", "delivered_at"]
+        )
+
+        return True
+
     # WebSocket event handlers
-
     async def chat_message(self, event):
+    # Ignore the sender's own broadcast.
+        if event["sender_id"] == self.user_id:
+            await self.send(text_data=json.dumps({
+                "type": "message",
+                "message_id": event["message_id"],
+                "message": event["message"],
+                "sender": event["sender"],
+                "timestamp": event["timestamp"],
+            }))
+            return
 
+        # Mark the message as delivered.
+        delivered = await self.mark_message_delivered(
+            event["message_id"]
+        )
+
+        # Send the message to the recipient.
         await self.send(text_data=json.dumps({
             "type": "message",
             "message_id": event["message_id"],
@@ -244,23 +292,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "timestamp": event["timestamp"],
         }))
 
-    async def presence_update(self, event):
+        # Notify the sender.
+        if delivered:
+            await self.channel_layer.group_send(
+                self.room_group_name,
+                {
+                    "type": "delivery_receipt",
+                    "message_id": event["message_id"],
+                    "sender_id": event["sender_id"],
+                },
+            )
 
-        await self.send(text_data=json.dumps({
-            "type": "presence",
-            "user_id": event["user_id"],
-            "username": event["username"],
-            "status": event["status"],
-        }))
-
-    async def typing_status(self, event):
-
-        if event["user_id"] == self.user_id:
+    async def delivery_receipt(self, event):
+       if self.user_id != event["sender_id"]:
             return
-
-        await self.send(text_data=json.dumps({
-            "type": "typing",
-            "user_id": event["user_id"],
-            "username": event["username"],
-            "is_typing": event["is_typing"],
-        }))
+           
+       await self.send(text_data=json.dumps({
+            "type": "delivery_receipt",
+             "message_id": event["message_id"],
+            "status": "delivered",
+        }))         

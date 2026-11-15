@@ -3,9 +3,36 @@ from .models import Message, Conversation
 from django.contrib.auth import get_user_model  
 
 
+class MessageReplySerializer(serializers.ModelSerializer):
+    sender_username = serializers.CharField(
+        source="sender.username",
+        read_only=True
+    )
+
+    class Meta:
+        model = Message
+        fields = [
+            "id",
+            "sender_username",
+            "content",
+            "timestamp",
+        ]
+
+
 class MessageSerializer(serializers.ModelSerializer):
     sender_username = serializers.CharField(
         source="sender.username",
+        read_only=True
+    )
+
+    reply_to = serializers.PrimaryKeyRelatedField(
+        queryset=Message.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
+    reply_to_details = MessageReplySerializer(
+        source="reply_to",
         read_only=True
     )
 
@@ -19,6 +46,8 @@ class MessageSerializer(serializers.ModelSerializer):
             "sender_username",
             "content",
             "timestamp",
+            "reply_to",
+            "reply_to_details",
         ]
 
         read_only_fields = [
@@ -35,6 +64,19 @@ class MessageSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError(
                 "Message content cannot be empty."
+            )
+
+        return value
+
+    def validate_reply_to(self, value):
+        if value is None:
+            return value
+
+        conversation = self.context.get("conversation")
+
+        if value.conversation_id != conversation.id:
+            raise serializers.ValidationError(
+                "You can only reply to messages in the same conversation."
             )
 
         return value

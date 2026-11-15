@@ -301,8 +301,32 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.send_error("Message cannot exceed 5000 characters.")
             return
 
-        message = await self.save_message(self.user_id, content)
+        # Get optional reply message ID
+        reply_to_id = data.get("reply_to")
 
+        if reply_to_id is not None:
+            if (
+                isinstance(reply_to_id, bool)
+                or not isinstance(reply_to_id, int)
+                or reply_to_id <= 0
+            ):
+                await self.send_error("Invalid reply message ID.")
+                return
+
+        # Save message
+        message = await self.save_message(
+            self.user_id,
+            content,
+            reply_to_id,
+        )
+
+        if message is None:
+            await self.send_error(
+                "Reply message not found in this conversation."
+            )
+            return
+
+        # Broadcast message
         await self.channel_layer.group_send(
             self.room_group_name,
             {
@@ -311,16 +335,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
             },
         )
 
-    async def send_error(self, message):
+    async def send_error(self, message: str) -> None:
         await self.send(
-            text_data=json.dumps(
-                {
+            text_data=json.dumps({
                     "type": "error",
                     "error": message,
-                }
+                })
             )
-        )
-
     # ==========================================
     # AUTOMATIC TYPING TIMEOUT
     # ==========================================
@@ -359,12 +380,35 @@ class ChatConsumer(AsyncWebsocketConsumer):
         ).exists()
 
     @database_sync_to_async
-    def save_message(self, user_id, content):
+    def save_message(self, user_id, content, reply_to_id=None):
+
+        reply_to = None
+
+        if reply_to_id is not None:
+            reply_to = Message.objects.filter(
+                id=reply_to_id,
+                conversation_id=self.conversation_id,
+            ).select_related("sender").first()
+
+            if not reply_to:
+                return None
+
         message = Message.objects.create(
             conversation_id=self.conversation_id,
             sender_id=user_id,
             content=content,
+            reply_to=reply_to,
         )
+
+        reply_to_details = None
+
+        if reply_to:
+            reply_to_details = {
+                "id": reply_to.id,
+                "sender_username": reply_to.sender.username,
+                "content": reply_to.content,
+                "timestamp": reply_to.timestamp.isoformat(),
+            }
 
         return {
             "message_id": message.id,
@@ -372,6 +416,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "sender": message.sender.username,
             "sender_id": message.sender_id,
             "timestamp": message.timestamp.isoformat(),
+            "reply_to": reply_to.id if reply_to else None,
+            "reply_to_details": reply_to_details,
         }
 
     @database_sync_to_async
@@ -474,14 +520,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         await self.send(
             text_data=json.dumps(
-                {
-                    "type": "message",
-                    "message_id": event["message_id"],
-                    "message": event["message"],
-                    "sender": event["sender"],
-                    "sender_id": event["sender_id"],
-                    "timestamp": event["timestamp"],
-                }
+               {
+                "type": "message",
+                "message_id": event["message_id"],
+                "message": event["message"],
+                "sender": event["sender"],
+                "sender_id": event["sender_id"],
+                "timestamp": event["timestamp"],
+                "reply_to": event["reply_to"],
+                "reply_to_details": event["reply_to_details"],
+            }
             )
         )
 

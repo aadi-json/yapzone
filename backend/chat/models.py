@@ -43,6 +43,15 @@ class Message(models.Model):
     is_edited = models.BooleanField(default=False)
     edited_at = models.DateTimeField(null=True, blank=True)
 
+    #replay
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete= models.SET_NULL,
+        null = True,
+        blank= True,
+        related_name="replies"
+    )
+
     class Meta:
         ordering = ["timestamp"]
 

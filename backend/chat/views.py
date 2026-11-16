@@ -8,7 +8,7 @@ from rest_framework.response import Response
 
 from .models import Conversation, Message
 from .serializers import ConversationSerializer, MessageSerializer
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import CursorPagination
 
 User = get_user_model()
 
@@ -90,18 +90,30 @@ def create_conversation(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def conversation_messages(request, conversation_id):
+
+    # Verify that the logged-in user belongs to this conversation
     conversation = get_object_or_404(
         get_user_conversations(request.user),
         id=conversation_id,
     )
 
+    # Fetch conversation messages
     messages = conversation.messages.select_related("sender").all()
-    serializer = MessageSerializer(messages, many=True)
 
-    return Response(
-        serializer.data,
-        status=status.HTTP_200_OK,
+    # Apply cursor pagination
+    paginator = MessagePagination()
+    paginated_messages = paginator.paginate_queryset(
+        messages,
+        request,
     )
+
+    # Serialize paginated messages
+    serializer = MessageSerializer(
+        paginated_messages,
+        many=True,
+    )
+
+    return paginator.get_paginated_response(serializer.data)
 
 
 @api_view(["POST"])
@@ -130,7 +142,6 @@ def create_message(request, conversation_id):
         status=status.HTTP_400_BAD_REQUEST,
     )
 
-class MessagePagination(PageNumberPagination):
+class MessagePagination(CursorPagination):
     page_size = 20
-    page_size_query_param = "page_size"
-    max_page_size = 50
+    ordering = "-id"

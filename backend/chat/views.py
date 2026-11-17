@@ -6,8 +6,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Conversation, Message
-from .serializers import ConversationSerializer, MessageSerializer
+from .models import Conversation, Message, MessageReaction
+from .serializers import ConversationSerializer, MessageSerializer, MessageReactionSerializer
 from rest_framework.pagination import CursorPagination
 
 User = get_user_model()
@@ -98,8 +98,13 @@ def conversation_messages(request, conversation_id):
     )
 
     # Fetch conversation messages
-    messages = conversation.messages.select_related("sender").all()
-
+    messages = (
+                        conversation.messages
+                        .select_related("sender")
+                        .prefetch_related("reactions__user")
+                        .all()
+                    )
+    
     # Apply cursor pagination
     paginator = MessagePagination()
     paginated_messages = paginator.paginate_queryset(
@@ -140,6 +145,57 @@ def create_message(request, conversation_id):
     return Response(
         serializer.errors,
         status=status.HTTP_400_BAD_REQUEST,
+    )
+
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def add_message_reaction(request, conversation_id, message_id):
+
+    # Verify that the logged-in user belongs to this conversation
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+    )
+
+    # Verify that the message belongs to this conversation
+    message = get_object_or_404(
+        Message,
+        id=message_id,
+        conversation=conversation,
+    )
+
+    # Remove the user's existing reaction
+    if request.method == "DELETE":
+        reaction = get_object_or_404(
+            MessageReaction,
+            message=message,
+            user=request.user,
+        )
+
+        reaction.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+    # Get or create the user's reaction
+    reaction, created = MessageReaction.objects.update_or_create(
+        message=message,
+        user=request.user,
+        defaults={
+            "emoji": request.data.get("emoji", ""),
+        },
+    )
+
+    serializer = MessageReactionSerializer(reaction)
+
+    return Response(
+        serializer.data,
+        status=(
+            status.HTTP_201_CREATED
+            if created
+            else status.HTTP_200_OK
+        ),
     )
 
 class MessagePagination(CursorPagination):

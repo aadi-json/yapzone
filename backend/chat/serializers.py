@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Message, Conversation
+from .models import Message, Conversation, MessageReaction
 from django.contrib.auth import get_user_model  
 
 
@@ -25,6 +25,30 @@ class MessageSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    reactions = serializers.SerializerMethodField()
+
+    def get_reactions(self, obj):
+        reactions = obj.reactions.all()
+
+        reaction_summary = {}
+
+        for reaction in reactions:
+            emoji = reaction.emoji
+
+            if emoji not in reaction_summary:
+                reaction_summary[emoji] = {
+                    "emoji": emoji,
+                    "count": 0,
+                    "users": [],
+                }
+
+            reaction_summary[emoji]["count"] += 1
+            reaction_summary[emoji]["users"].append(
+                reaction.user.username
+            )
+
+        return list(reaction_summary.values())
+
     reply_to = serializers.PrimaryKeyRelatedField(
         queryset=Message.objects.all(),
         required=False,
@@ -40,15 +64,16 @@ class MessageSerializer(serializers.ModelSerializer):
         model = Message
 
         fields = [
-            "id",
-            "conversation",
-            "sender",
-            "sender_username",
-            "content",
-            "timestamp",
-            "reply_to",
-            "reply_to_details",
-        ]
+                    "id",
+                    "conversation",
+                    "sender",
+                    "sender_username",
+                    "content",
+                    "timestamp",
+                    "reply_to",
+                    "reply_to_details",
+                    "reactions",
+                ]
 
         read_only_fields = [
             "id",
@@ -130,3 +155,31 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return User.objects.create_user(**validated_data)
+
+# =======================
+# Message Reaction Serializer
+# =======================
+
+class MessageReactionSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(
+        source="user.username",
+        read_only=True,
+    )
+
+    class Meta:
+        model = MessageReaction
+        fields = [
+            "id",
+            "message",
+            "user",
+            "username",
+            "emoji",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "user",
+            "username",
+            "created_at",
+        ]

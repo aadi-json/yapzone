@@ -25,6 +25,12 @@ class MessageSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
+    forwarded_from_username = serializers.CharField(
+    source="forwarded_from.sender.username",
+    read_only=True,
+    allow_null=True,
+)
+
     reactions = serializers.SerializerMethodField()
 
     def get_reactions(self, obj):
@@ -73,6 +79,9 @@ class MessageSerializer(serializers.ModelSerializer):
                     "reply_to",
                     "reply_to_details",
                     "reactions",
+                    "is_forwarded",
+                    "forwarded_from",
+                    "forwarded_from_username",
                 ]
 
         read_only_fields = [
@@ -81,6 +90,8 @@ class MessageSerializer(serializers.ModelSerializer):
             "sender",
             "sender_username",
             "timestamp",
+            "is_forwarded",
+            "forwarded_from",
         ]
 
     def validate_content(self, value):

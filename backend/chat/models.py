@@ -51,6 +51,15 @@ class Message(models.Model):
         blank= True,
         related_name="replies"
     )
+    is_forwarded = models.BooleanField(default=False)
+
+    forwarded_from = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="forwarded_messages",
+    )
 
     class Meta:
         ordering = ["timestamp"]

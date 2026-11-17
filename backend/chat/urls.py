@@ -4,7 +4,8 @@ from .views import (
     create_conversation,
     conversation_messages,
     create_message,
-    add_message_reaction
+    add_message_reaction,
+    forward_message,
 )
 
 urlpatterns = [
@@ -32,6 +33,11 @@ urlpatterns = [
         "conversations/<int:conversation_id>/messages/<int:message_id>/reactions/",
         add_message_reaction,
         name="add-message-reaction",
-),
+    ),
+    path(
+    "conversations/<int:conversation_id>/messages/<int:message_id>/forward/",
+    forward_message,
+    name="forward-message",
+    ),
 ]
 

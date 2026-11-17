@@ -198,6 +198,57 @@ def add_message_reaction(request, conversation_id, message_id):
         ),
     )
 
+# ===========================
+# forward_message
+#===========================
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def forward_message(request, conversation_id, message_id):
+
+    # Check whether the user belongs to the source conversation
+    source_conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+    )
+
+    # Find the message to forward
+    original_message = get_object_or_404(
+        Message,
+        id=message_id,
+        conversation=source_conversation,
+    )
+
+    # Get the destination conversation ID
+    destination_id = request.data.get("destination_conversation_id")
+
+    if not destination_id:
+        return Response(
+            {"error": "destination_conversation_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Check whether the user belongs to the destination conversation
+    destination_conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=destination_id,
+    )
+
+    # Create a new forwarded message
+    forwarded_message = Message.objects.create(
+        conversation=destination_conversation,
+        sender=request.user,
+        content=original_message.content,
+        is_forwarded=True,
+        forwarded_from=original_message,
+    )
+
+    serializer = MessageSerializer(forwarded_message)
+
+    return Response(
+        serializer.data,
+        status=status.HTTP_201_CREATED,
+    )
+
 class MessagePagination(CursorPagination):
     page_size = 20
     ordering = "-id"

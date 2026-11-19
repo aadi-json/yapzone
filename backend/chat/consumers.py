@@ -654,3 +654,37 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+    # ===========================
+    # Message Pinned Event
+    # ===========================
+
+    async def message_pinned(self, event):
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_pinned",
+                    "message_id": event["message_id"],
+                    "pinned_by": event["pinned_by"],
+                    "pinned_by_username": event["pinned_by_username"],
+                    "pinned_at": event["pinned_at"],
+                }
+            )
+        )
+
+    # ===========================
+    # Message Unpinned Event
+    # ===========================
+
+    async def message_unpinned(self, event):
+
+        await self.send(
+            text_data=json.dumps(
+                {
+                    "type": "message_unpinned",
+                    "message_id": event["message_id"],
+                    "unpinned_by": event["unpinned_by"],
+                    "unpinned_by_username": event["unpinned_by_username"],
+                }
+            )
+        )

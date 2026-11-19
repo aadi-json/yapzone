@@ -6,6 +6,9 @@ from .views import (
     create_message,
     add_message_reaction,
     forward_message,
+    pin_message,
+    unpin_message,
+    get_pinned_messages
 )
 
 urlpatterns = [
@@ -38,6 +41,26 @@ urlpatterns = [
     "conversations/<int:conversation_id>/messages/<int:message_id>/forward/",
     forward_message,
     name="forward-message",
+    ),
+        # Pin message
+    path(
+        "conversations/<int:conversation_id>/messages/<int:message_id>/pin/",
+        pin_message,
+        name="pin-message",
+    ),
+
+    # Unpin message
+    path(
+        "conversations/<int:conversation_id>/messages/<int:message_id>/unpin/",
+        unpin_message,
+        name="unpin-message",
+    ),
+
+    # Get pinned messages
+    path(
+        "conversations/<int:conversation_id>/pinned-messages/",
+        get_pinned_messages,
+        name="pinned-messages",
     ),
 ]
 

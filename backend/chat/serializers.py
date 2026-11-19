@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Message, Conversation, MessageReaction
+from .models import Message, Conversation, MessageReaction, PinnedMessage
 from django.contrib.auth import get_user_model  
 
 
@@ -194,3 +194,35 @@ class MessageReactionSerializer(serializers.ModelSerializer):
             "username",
             "created_at",
         ]
+
+# =======================
+# Pinned Message Serializer
+# =======================
+
+class PinnedMessageSerializer(serializers.ModelSerializer):
+
+    pinned_by_username = serializers.CharField(
+        source="pinned_by.username",
+        read_only=True,
+    )
+
+    class Meta:
+        model = PinnedMessage
+
+        fields = [
+            "id",
+            "conversation",
+            "message",
+            "pinned_by",
+            "pinned_by_username",
+            "pinned_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "conversation",
+            "message",
+            "pinned_by",
+            "pinned_by_username",
+            "pinned_at",
+        ] 

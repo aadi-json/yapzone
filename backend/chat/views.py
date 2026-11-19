@@ -8,8 +8,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Conversation, Message, MessageReaction
-from .serializers import ConversationSerializer, MessageSerializer, MessageReactionSerializer
+from .models import Conversation, Message, MessageReaction, PinnedMessage
+from .serializers import ConversationSerializer, MessageSerializer, MessageReactionSerializer, PinnedMessageSerializer
 from rest_framework.pagination import CursorPagination
 
 User = get_user_model()
@@ -271,6 +271,151 @@ def forward_message(request, conversation_id, message_id):
         status=status.HTTP_201_CREATED,
     )
 
+
+# ===========================
+# Pin Message
+# ===========================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def pin_message(request, conversation_id, message_id):
+
+    # Step 1: Verify conversation membership
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+    )
+
+    # Step 2: Verify message belongs to the conversation
+    message = get_object_or_404(
+        Message,
+        id=message_id,
+        conversation=conversation,
+    )
+
+    # Step 3: Create pinned message or retrieve existing record
+    pinned_message, created = PinnedMessage.objects.get_or_create(
+        conversation=conversation,
+        message=message,
+        defaults={
+            "pinned_by": request.user,
+        },
+    )
+
+    # Step 4: Broadcast pin event only when newly pinned
+    if created:
+        channel_layer = get_channel_layer()
+
+        async_to_sync(channel_layer.group_send)(
+            f"chat_{conversation.id}",
+            {
+                "type": "message_pinned",
+                "message_id": message.id,
+                "pinned_by": request.user.id,
+                "pinned_by_username": request.user.username,
+                "pinned_at": pinned_message.pinned_at.isoformat(),
+            },
+        )
+
+    # Step 5: Return response
+    serializer = PinnedMessageSerializer(pinned_message)
+
+    return Response(
+        serializer.data,
+        status=(
+            status.HTTP_201_CREATED
+            if created
+            else status.HTTP_200_OK
+        ),
+    )
+
+# ===========================
+# Unpin Message
+# ===========================
+
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def unpin_message(request, conversation_id, message_id):
+
+    # Verify conversation membership
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+    )
+
+    # Verify message belongs to the conversation
+    message = get_object_or_404(
+        Message,
+        id=message_id,
+        conversation=conversation,
+    )
+
+    # Find the pinned message
+    pinned_message = get_object_or_404(
+        PinnedMessage,
+        conversation=conversation,
+        message=message,
+    )
+
+    # Delete the pinned record
+    pinned_message.delete()
+
+    # Broadcast unpin event through WebSocket
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{conversation.id}",
+        {
+            "type": "message_unpinned",
+            "message_id": message.id,
+            "unpinned_by": request.user.id,
+            "unpinned_by_username": request.user.username,
+        },
+    )
+
+    return Response(
+        {"message": "Message unpinned successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+# ===========================
+# Get Pinned Messages
+# ===========================
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_pinned_messages(request, conversation_id):
+
+    # Verify conversation membership
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+    )
+
+    # Fetch pinned messages
+    pinned_messages = (
+        PinnedMessage.objects
+        .filter(conversation=conversation)
+        .select_related(
+            "message",
+            "message__sender",
+            "pinned_by",
+        )
+        .order_by("-pinned_at")
+    )
+
+    serializer = PinnedMessageSerializer(
+        pinned_messages,
+        many=True,
+    )
+
+    return Response(
+        serializer.data,
+        status=status.HTTP_200_OK,
+    )
+
 class MessagePagination(CursorPagination):
     page_size = 20
     ordering = "-id"
+
+

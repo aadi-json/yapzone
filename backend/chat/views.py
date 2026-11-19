@@ -1,5 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
 
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -240,6 +242,26 @@ def forward_message(request, conversation_id, message_id):
         content=original_message.content,
         is_forwarded=True,
         forwarded_from=original_message,
+    )
+
+    # Broadcast the forwarded message through WebSocket
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{destination_conversation.id}",
+        {
+            "type": "chat_message",
+            "message_id": forwarded_message.id,
+            "message": forwarded_message.content,
+            "sender": request.user.username,
+            "sender_id": request.user.id,
+            "timestamp": forwarded_message.timestamp.isoformat(),
+            "reply_to": None,
+            "reply_to_details": None,
+            "is_forwarded": True,
+            "forwarded_from": original_message.id,
+            "forwarded_from_username": original_message.sender.username,
+        },
     )
 
     serializer = MessageSerializer(forwarded_message)

@@ -520,16 +520,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
     async def chat_message(self, event):
         await self.send(
             text_data=json.dumps(
-               {
-                "type": "message",
-                "message_id": event["message_id"],
-                "message": event["message"],
-                "sender": event["sender"],
-                "sender_id": event["sender_id"],
-                "timestamp": event["timestamp"],
-                "reply_to": event["reply_to"],
-                "reply_to_details": event["reply_to_details"],
-            }
+                {
+                    "type": "message",
+                    "message_id": event["message_id"],
+                    "message": event["message"],
+                    "sender": event["sender"],
+                    "sender_id": event["sender_id"],
+                    "timestamp": event["timestamp"],
+                    "reply_to": event["reply_to"],
+                    "reply_to_details": event["reply_to_details"],
+                    "is_forwarded": event.get("is_forwarded", False),
+                    "forwarded_from": event.get("forwarded_from"),
+                    "forwarded_from_username": event.get("forwarded_from_username"),
+                }
             )
         )
 

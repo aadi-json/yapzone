@@ -414,6 +414,53 @@ def get_pinned_messages(request, conversation_id):
         status=status.HTTP_200_OK,
     )
 
+# ===========================
+# Message Search
+# ===========================
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def search_messages(request):
+    query = request.query_params.get("q", "").strip()
+
+    # Validate search query
+    if not query:
+        return Response(
+            {"error": "Search query is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Get conversations belonging to the authenticated user
+    user_conversations = get_user_conversations(request.user)
+
+    # Search messages only within user's conversations
+    messages = (
+        Message.objects
+        .filter(
+            conversation__in=user_conversations,
+            content__icontains=query,
+        )
+        .select_related(
+            "sender",
+            "conversation",
+        )
+        .order_by("-id")
+    )
+
+    # Apply pagination
+    paginator = MessagePagination()
+    paginated_messages = paginator.paginate_queryset(
+        messages,
+        request,
+    )
+
+    serializer = MessageSerializer(
+        paginated_messages,
+        many=True,
+    )
+
+    return paginator.get_paginated_response(serializer.data)
+
 class MessagePagination(CursorPagination):
     page_size = 20
     ordering = "-id"

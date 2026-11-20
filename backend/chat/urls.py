@@ -8,7 +8,8 @@ from .views import (
     forward_message,
     pin_message,
     unpin_message,
-    get_pinned_messages
+    get_pinned_messages,
+    search_messages,
 )
 
 urlpatterns = [
@@ -61,6 +62,12 @@ urlpatterns = [
         "conversations/<int:conversation_id>/pinned-messages/",
         get_pinned_messages,
         name="pinned-messages",
+    ),
+    # Search messages
+    path(
+        "messages/search/",
+        search_messages,
+        name="search-messages",
     ),
 ]
 

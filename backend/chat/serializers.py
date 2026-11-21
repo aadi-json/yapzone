@@ -1,6 +1,7 @@
 from rest_framework import serializers
-from .models import Message, Conversation, MessageReaction, PinnedMessage
+from .models import Message, Conversation, MessageReaction, PinnedMessage, MessageAttachment
 from django.contrib.auth import get_user_model  
+from .validators import validate_attachment_file
 
 
 class MessageReplySerializer(serializers.ModelSerializer):
@@ -17,6 +18,36 @@ class MessageReplySerializer(serializers.ModelSerializer):
             "content",
             "timestamp",
         ]
+
+# =========================
+# Message attachment serializer
+#=========================
+
+class MessageAttachmentSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = MessageAttachment
+
+        fields = [
+            "id",
+            "message",
+            "file",
+            "file_name",
+            "file_type",
+            "file_size",
+            "uploaded_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "message",
+            "file_name",
+            "file_type",
+            "file_size",
+            "uploaded_at",
+        ]
+    def validate_file(self, value):
+        return validate_attachment_file(value)
 
 
 class MessageSerializer(serializers.ModelSerializer):
@@ -65,6 +96,10 @@ class MessageSerializer(serializers.ModelSerializer):
         source="reply_to",
         read_only=True
     )
+    attachments = MessageAttachmentSerializer(
+        many=True,
+        read_only=True,
+    )
 
     class Meta:
         model = Message
@@ -80,6 +115,7 @@ class MessageSerializer(serializers.ModelSerializer):
                     "reply_to_details",
                     "reactions",
                     "is_forwarded",
+                    "attachments",
                     "forwarded_from",
                     "forwarded_from_username",
                 ]
@@ -226,3 +262,4 @@ class PinnedMessageSerializer(serializers.ModelSerializer):
             "pinned_by_username",
             "pinned_at",
         ] 
+

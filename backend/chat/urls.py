@@ -10,6 +10,7 @@ from .views import (
     unpin_message,
     get_pinned_messages,
     search_messages,
+    upload_attachment,
 )
 
 urlpatterns = [
@@ -68,6 +69,11 @@ urlpatterns = [
         "messages/search/",
         search_messages,
         name="search-messages",
+    ),
+    path(
+    "conversations/<int:conversation_id>/messages/<int:message_id>/attachments/",
+    upload_attachment,
+    name="upload-attachment",
     ),
 ]
 

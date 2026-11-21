@@ -8,9 +8,15 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Conversation, Message, MessageReaction, PinnedMessage
-from .serializers import ConversationSerializer, MessageSerializer, MessageReactionSerializer, PinnedMessageSerializer
+from .models import Conversation, Message, MessageReaction, PinnedMessage, MessageAttachment
+from .serializers import ConversationSerializer, MessageSerializer, MessageReactionSerializer, PinnedMessageSerializer, MessageAttachmentSerializer
 from rest_framework.pagination import CursorPagination
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.decorators import (
+    api_view,
+    permission_classes,
+    parser_classes,
+)
 
 User = get_user_model()
 
@@ -460,6 +466,62 @@ def search_messages(request):
     )
 
     return paginator.get_paginated_response(serializer.data)
+
+# =====================================
+# Upload attacment API
+# =====================================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+@parser_classes([MultiPartParser, FormParser])
+def upload_attachment(request, conversation_id, message_id):
+    # 1. Verify conversation membership
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+    )
+
+    # 2. Verify message belongs to this conversation
+    message = get_object_or_404(
+        Message,
+        id=message_id,
+        conversation=conversation,
+    )
+
+    # 3. Get uploaded file
+    uploaded_file = request.FILES.get("file")
+
+    if not uploaded_file:
+        return Response(
+            {"error": "No file was uploaded."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # 4. Validate attachment
+    serializer = MessageAttachmentSerializer(
+        data={"file": uploaded_file}
+    )
+
+    if serializer.is_valid():
+
+        # 5. Save attachment metadata
+        attachment = serializer.save(
+            message=message,
+            file_name=uploaded_file.name,
+            file_type=uploaded_file.content_type or "application/octet-stream",
+            file_size=uploaded_file.size,
+        )
+
+        # 6. Return response
+        return Response(
+            MessageAttachmentSerializer(attachment).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    return Response(
+        serializer.errors,
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 class MessagePagination(CursorPagination):
     page_size = 20

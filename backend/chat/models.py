@@ -15,10 +15,41 @@ class Conversation(models.Model):
         related_name="conversations_as_participant_2",
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    name = models.CharField(max_length=100, blank=True, null=True)
+    is_group = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Conversation {self.id}"
 
+#  ===============================
+#  Conversation Participant
+#  ===============================
+
+class ConversationParticipant(models.Model):
+    conversation = models.ForeignKey(
+        Conversation,
+        on_delete=models.CASCADE,
+        related_name="participants",
+    )
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="conversation_memberships",
+    )
+
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation", "user"],
+                name="unique_conversation_participant",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.user} in Conversation {self.conversation.id}"
 
 class Message(models.Model):
     conversation = models.ForeignKey(

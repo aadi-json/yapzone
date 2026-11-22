@@ -11,6 +11,7 @@ from .views import (
     get_pinned_messages,
     search_messages,
     upload_attachment,
+    create_group_conversation,
 )
 
 urlpatterns = [
@@ -74,6 +75,11 @@ urlpatterns = [
     "conversations/<int:conversation_id>/messages/<int:message_id>/attachments/",
     upload_attachment,
     name="upload-attachment",
+    ),
+    path(
+    "groups/",
+    create_group_conversation,
+    name="create-group-conversation",
     ),
 ]
 

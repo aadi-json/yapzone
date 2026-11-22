@@ -155,7 +155,9 @@ class MessageSerializer(serializers.ModelSerializer):
 
 
 #Conversation Serializer
+# Conversation Serializer
 class ConversationSerializer(serializers.ModelSerializer):
+
     participant_1_username = serializers.CharField(
         source="participant_1.username",
         read_only=True,
@@ -166,6 +168,8 @@ class ConversationSerializer(serializers.ModelSerializer):
         read_only=True,
     )
 
+    participants = serializers.SerializerMethodField()
+
     class Meta:
         model = Conversation
 
@@ -175,6 +179,9 @@ class ConversationSerializer(serializers.ModelSerializer):
             "participant_1_username",
             "participant_2",
             "participant_2_username",
+            "name",
+            "is_group",
+            "participants",
             "created_at",
         ]
 
@@ -183,7 +190,32 @@ class ConversationSerializer(serializers.ModelSerializer):
             "participant_1",
             "participant_1_username",
             "participant_2_username",
+            "participants",
             "created_at",
+        ]
+
+    def get_participants(self, obj):
+
+        if obj.is_group:
+            memberships = obj.participants.select_related("user").all()
+
+            return [
+                {
+                    "id": membership.user.id,
+                    "username": membership.user.username,
+                }
+                for membership in memberships
+            ]
+
+        return [
+            {
+                "id": obj.participant_1.id,
+                "username": obj.participant_1.username,
+            },
+            {
+                "id": obj.participant_2.id,
+                "username": obj.participant_2.username,
+            },
         ]
 
 

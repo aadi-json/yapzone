@@ -8,7 +8,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Conversation, Message, MessageReaction, PinnedMessage, MessageAttachment
+from .models import Conversation, Message, MessageReaction, PinnedMessage, MessageAttachment, ConversationParticipant
 from .serializers import ConversationSerializer, MessageSerializer, MessageReactionSerializer, PinnedMessageSerializer, MessageAttachmentSerializer
 from rest_framework.pagination import CursorPagination
 from rest_framework.parsers import MultiPartParser, FormParser
@@ -22,11 +22,20 @@ User = get_user_model()
 
 
 def get_user_conversations(user):
-    return Conversation.objects.filter(
-        participant_1=user
+    direct_conversations = Conversation.objects.filter(
+        participant_1=user,
+        is_group=False,
     ) | Conversation.objects.filter(
-        participant_2=user
+        participant_2=user,
+        is_group=False,
     )
+
+    group_conversations = Conversation.objects.filter(
+        participants__user=user,
+        is_group=True,
+    )
+
+    return (direct_conversations | group_conversations).distinct()
 
 
 @api_view(["GET"])
@@ -70,12 +79,16 @@ def create_conversation(request):
     other_user = get_object_or_404(User, id=participant_id)
 
     conversation = get_user_conversations(request.user).filter(
-        participant_1=other_user
-    ).first()
+                            participant_1=other_user,
+                            participant_2=request.user,
+                            is_group=False,
+                        ).first()
 
     if not conversation:
         conversation = get_user_conversations(request.user).filter(
-            participant_2=other_user
+            participant_1=request.user,
+            participant_2=other_user,
+            is_group=False,
         ).first()
 
     if conversation:
@@ -94,6 +107,80 @@ def create_conversation(request):
         status=status.HTTP_201_CREATED,
     )
 
+# =============================
+# Create Group Coversation
+# =============================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_group_conversation(request):
+
+    name = request.data.get("name")
+    participant_ids = request.data.get("participant_ids")
+
+    if not name or not name.strip():
+        return Response(
+            {"error": "Group name is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not isinstance(participant_ids, list) or not participant_ids:
+        return Response(
+            {"error": "participant_ids must be a non-empty list."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if len(participant_ids) != len(set(map(str, participant_ids))):
+        return Response(
+            {"error": "Duplicate participants are not allowed."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if str(request.user.id) in map(str, participant_ids):
+        return Response(
+            {"error": "You are automatically included in the group."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if len(name.strip()) > 100:
+        return Response(
+            {"error": "Group name cannot exceed 100 characters."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    users = list(User.objects.filter(id__in=participant_ids))
+
+    if len(users) != len(participant_ids):
+        return Response(
+            {"error": "One or more users do not exist."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    conversation = Conversation.objects.create(
+        name=name.strip(),
+        is_group=True,
+        participant_1=request.user,
+        participant_2=request.user,
+    )
+
+    members = [request.user] + users
+
+    ConversationParticipant.objects.bulk_create([
+        ConversationParticipant(
+            conversation=conversation,
+            user=user,
+        )
+        for user in members
+    ])
+
+    return Response(
+        ConversationSerializer(conversation).data,
+        status=status.HTTP_201_CREATED,
+    )
+
+# ==================================
+# create_conversation
+# ==================================
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])

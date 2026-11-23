@@ -12,6 +12,8 @@ from .views import (
     search_messages,
     upload_attachment,
     create_group_conversation,
+    add_group_member,
+    remove_group_member
 )
 
 urlpatterns = [
@@ -80,6 +82,16 @@ urlpatterns = [
     "groups/",
     create_group_conversation,
     name="create-group-conversation",
+    ),
+    path(
+    "groups/<int:conversation_id>/members/",
+    add_group_member,
+    name="add-group-member",
+    ),
+    path(
+    "groups/<int:conversation_id>/members/<int:user_id>/",
+    remove_group_member,
+    name="remove-group-member",
     ),
 ]
 

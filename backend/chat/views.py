@@ -178,6 +178,82 @@ def create_group_conversation(request):
         status=status.HTTP_201_CREATED,
     )
 
+#  =============================
+#  Add Group Member
+#  =============================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def add_group_member(request, conversation_id):
+
+    user_id = request.data.get("user_id")
+
+    if not user_id:
+        return Response(
+            {"error": "user_id is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Verify that the requesting user belongs to this group.
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+        is_group=True,
+    )
+
+    # Check whether the user exists.
+    new_user = get_object_or_404(User, id=user_id)
+
+    # Prevent adding an existing member.
+    if ConversationParticipant.objects.filter(
+        conversation=conversation,
+        user=new_user,
+    ).exists():
+        return Response(
+            {"error": "User is already a member of this group."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Add the new member.
+    ConversationParticipant.objects.create(
+        conversation=conversation,
+        user=new_user,
+    )
+
+    return Response(
+        ConversationSerializer(conversation).data,
+        status=status.HTTP_201_CREATED,
+    )
+
+# =========================
+# Remove Group Member
+# =========================
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def remove_group_member(request, conversation_id, user_id):
+
+    # Verify that the requesting user belongs to this group.
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+        is_group=True,
+    )
+
+    # Verify that the target user is a member.
+    membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user_id=user_id,
+    )
+
+    # Remove the membership.
+    membership.delete()
+
+    return Response(
+        {"message": "Member removed successfully."},
+        status=status.HTTP_200_OK,
+    )
+
 # ==================================
 # create_conversation
 # ==================================

@@ -203,6 +203,7 @@ class ConversationSerializer(serializers.ModelSerializer):
                 {
                     "id": membership.user.id,
                     "username": membership.user.username,
+                    "role": membership.role,
                 }
                 for membership in memberships
             ]
@@ -217,7 +218,6 @@ class ConversationSerializer(serializers.ModelSerializer):
                 "username": obj.participant_2.username,
             },
         ]
-
 
 User = get_user_model()
 

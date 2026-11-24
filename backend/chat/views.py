@@ -166,11 +166,11 @@ def create_group_conversation(request):
     members = [request.user] + users
 
     ConversationParticipant.objects.bulk_create([
-        ConversationParticipant(
-            conversation=conversation,
-            user=user,
-        )
-        for user in members
+    ConversationParticipant(
+        conversation=conversation,
+        user=user,
+    )
+    for user in members
     ])
 
     return Response(
@@ -201,6 +201,21 @@ def add_group_member(request, conversation_id):
         is_group=True,
     )
 
+    #Here we are implimenting role based authorization
+    membership = ConversationParticipant.objects.get(
+    conversation=conversation,
+    user=request.user,
+    )
+
+    if membership.role not in [
+        ConversationParticipant.Role.ADMIN,
+        ConversationParticipant.Role.MODERATOR,
+    ]:
+        return Response(
+            {"error": "You do not have permission to add members."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
     # Check whether the user exists.
     new_user = get_object_or_404(User, id=user_id)
 
@@ -226,31 +241,261 @@ def add_group_member(request, conversation_id):
     )
 
 # =========================
-# Remove Group Member
+# Remove Group Member   
 # =========================
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def remove_group_member(request, conversation_id, user_id):
 
-    # Verify that the requesting user belongs to this group.
+    # Get the group.
     conversation = get_object_or_404(
         get_user_conversations(request.user),
         id=conversation_id,
         is_group=True,
     )
 
-    # Verify that the target user is a member.
-    membership = get_object_or_404(
+    # Get the requester's membership.
+    requester_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user=request.user,
+    )
+
+    # Get the target user's membership.
+    target_membership = get_object_or_404(
         ConversationParticipant,
         conversation=conversation,
         user_id=user_id,
     )
 
+    # Check whether the requester is removing themselves.
+    is_self_removal = request.user.id == int(user_id)
+
+    # Admin cannot leave without transferring ownership.
+    if (
+        is_self_removal
+        and requester_membership.role == ConversationParticipant.Role.ADMIN
+    ):
+        return Response(
+            {
+                "error": (
+                    "Admin cannot leave the group. "
+                    "Transfer admin ownership first."
+                )
+            },
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Only admins and moderators can remove other members.
+    if not is_self_removal:
+        if requester_membership.role not in [
+            ConversationParticipant.Role.ADMIN,
+            ConversationParticipant.Role.MODERATOR,
+        ]:
+            return Response(
+                {"error": "You do not have permission to remove members."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
     # Remove the membership.
-    membership.delete()
+    target_membership.delete()
 
     return Response(
         {"message": "Member removed successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+
+# ==========================
+# Promote Group Member
+# ==========================
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def promote_group_member(request, conversation_id, user_id):
+
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+        is_group=True,
+    )
+
+    # Only admins can promote members.
+    requester_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user=request.user,
+    )
+
+    if requester_membership.role != ConversationParticipant.Role.ADMIN:
+        return Response(
+            {"error": "Only admins can promote members."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Find the target member.
+    target_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user_id=user_id,
+    )
+
+    if target_membership.role == ConversationParticipant.Role.ADMIN:
+        return Response(
+            {"error": "Cannot change an admin's role."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if target_membership.role == ConversationParticipant.Role.MODERATOR:
+        return Response(
+            {"error": "User is already a moderator."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    target_membership.role = ConversationParticipant.Role.MODERATOR
+    target_membership.save(update_fields=["role"])
+
+    return Response(
+        {"message": "Member promoted to moderator successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+# ========================
+# Demote Group Member
+# ========================
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def demote_group_member(request, conversation_id, user_id):
+
+    # Get the group.
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+        is_group=True,
+    )
+
+    # Only admins can demote moderators.
+    requester_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user=request.user,
+    )
+
+    if requester_membership.role != ConversationParticipant.Role.ADMIN:
+        return Response(
+            {"error": "Only admins can demote moderators."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Find the target member.
+    target_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user_id=user_id,
+    )
+
+    if target_membership.role != ConversationParticipant.Role.MODERATOR:
+        return Response(
+            {"error": "User is not a moderator."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    # Demote moderator to member.
+    target_membership.role = ConversationParticipant.Role.MEMBER
+    target_membership.save(update_fields=["role"])
+
+    return Response(
+        {"message": "Moderator demoted to member successfully."},
+        status=status.HTTP_200_OK,
+    )
+
+# =================================
+# Update Group Name
+# ==================================
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def update_group_name(request, conversation_id):
+
+    # Get the group.
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+        is_group=True,
+    )
+
+    # Get the requester's membership.
+    requester_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user=request.user,
+    )
+
+    # Only admins can change the group name.
+    if requester_membership.role != ConversationParticipant.Role.ADMIN:
+        return Response(
+            {"error": "Only admins can change the group name."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Get the new group name.
+    new_name = request.data.get("name", "").strip()
+
+    if not new_name:
+        return Response(
+            {"error": "Group name is required."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if len(new_name) > 100:
+        return Response(
+            {"error": "Group name cannot exceed 100 characters."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    conversation.name = new_name
+    conversation.save(update_fields=["name"])
+
+    return Response(
+        {
+            "message": "Group name updated successfully.",
+            "name": conversation.name,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+# ============================
+# Delete Group
+# ============================
+@api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
+def delete_group(request, conversation_id):
+
+    # Get the group.
+    conversation = get_object_or_404(
+        get_user_conversations(request.user),
+        id=conversation_id,
+        is_group=True,
+    )
+
+    # Get the requester's membership.
+    requester_membership = get_object_or_404(
+        ConversationParticipant,
+        conversation=conversation,
+        user=request.user,
+    )
+
+    # Only admins can delete the group.
+    if requester_membership.role != ConversationParticipant.Role.ADMIN:
+        return Response(
+            {"error": "Only admins can delete the group."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    # Delete the group.
+    conversation.delete()
+
+    return Response(
+        {"message": "Group deleted successfully."},
         status=status.HTTP_200_OK,
     )
 

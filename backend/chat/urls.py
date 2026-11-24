@@ -13,7 +13,11 @@ from .views import (
     upload_attachment,
     create_group_conversation,
     add_group_member,
-    remove_group_member
+    remove_group_member,
+    promote_group_member,
+    demote_group_member,
+    update_group_name,
+    delete_group
 )
 
 urlpatterns = [
@@ -92,6 +96,26 @@ urlpatterns = [
     "groups/<int:conversation_id>/members/<int:user_id>/",
     remove_group_member,
     name="remove-group-member",
+    ),
+    path(
+    "groups/<int:conversation_id>/members/<int:user_id>/promote/",
+    promote_group_member,
+    name="promote-group-member",
+    ),
+    path(
+    "groups/<int:conversation_id>/members/<int:user_id>/demote/",
+    demote_group_member,
+    name="demote-group-member",
+    ),
+    path(
+    "groups/<int:conversation_id>/update-name/",
+    update_group_name,
+    name="update-group-name",
+    ),
+    path(
+    "groups/<int:conversation_id>/delete/",
+    delete_group,
+    name="delete-group",
     ),
 ]
 

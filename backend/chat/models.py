@@ -26,6 +26,12 @@ class Conversation(models.Model):
 #  ===============================
 
 class ConversationParticipant(models.Model):
+
+    class Role(models.TextChoices):
+        ADMIN = "admin", "Admin"
+        MODERATOR = "moderator", "Moderator"
+        MEMBER = "member", "Member"
+
     conversation = models.ForeignKey(
         Conversation,
         on_delete=models.CASCADE,
@@ -36,6 +42,12 @@ class ConversationParticipant(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="conversation_memberships",
+    )
+
+    role = models.CharField(
+        max_length=10,
+        choices=Role.choices,
+        default=Role.MEMBER,
     )
 
     joined_at = models.DateTimeField(auto_now_add=True)
@@ -51,6 +63,10 @@ class ConversationParticipant(models.Model):
     def __str__(self):
         return f"{self.user} in Conversation {self.conversation.id}"
 
+
+# ==============================
+# Message Model
+# ==============================
 class Message(models.Model):
     conversation = models.ForeignKey(
         Conversation,

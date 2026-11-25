@@ -17,6 +17,19 @@ from rest_framework.decorators import (
     permission_classes,
     parser_classes,
 )
+from asgiref.sync import async_to_sync
+from channels.layers import get_channel_layer
+
+def broadcast_group_event(conversation_id, event_type, payload):
+    channel_layer = get_channel_layer()
+
+    async_to_sync(channel_layer.group_send)(
+        f"chat_{conversation_id}",
+        {
+            "type": event_type,
+            "payload": payload,
+        }
+    )
 
 User = get_user_model()
 
@@ -201,10 +214,10 @@ def add_group_member(request, conversation_id):
         is_group=True,
     )
 
-    #Here we are implimenting role based authorization
+    # Role-based authorization.
     membership = ConversationParticipant.objects.get(
-    conversation=conversation,
-    user=request.user,
+        conversation=conversation,
+        user=request.user,
     )
 
     if membership.role not in [
@@ -233,6 +246,18 @@ def add_group_member(request, conversation_id):
     ConversationParticipant.objects.create(
         conversation=conversation,
         user=new_user,
+    )
+
+    # Broadcast the event to connected group members.
+    broadcast_group_event(
+        conversation.id,
+        "group_member_added",
+        {
+            "conversation_id": conversation.id,
+            "user_id": new_user.id,
+            "username": new_user.username,
+            "added_by": request.user.username,
+        },
     )
 
     return Response(
@@ -297,13 +322,37 @@ def remove_group_member(request, conversation_id, user_id):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
+    # Capture target details before deleting membership.
+    removed_user_id = target_membership.user.id
+    removed_username = target_membership.user.username
+
     # Remove the membership.
     target_membership.delete()
+
+    # Select the appropriate event.
+    event_type = (
+        "group_member_left"
+        if is_self_removal
+        else "group_member_removed"
+    )
+
+    # Broadcast the event.
+    broadcast_group_event(
+        conversation.id,
+        event_type,
+        {
+            "conversation_id": conversation.id,
+            "user_id": removed_user_id,
+            "username": removed_username,
+            "removed_by": request.user.username,
+        },
+    )
 
     return Response(
         {"message": "Member removed successfully."},
         status=status.HTTP_200_OK,
     )
+
 
 
 # ==========================
@@ -351,8 +400,22 @@ def promote_group_member(request, conversation_id, user_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Update the role.
     target_membership.role = ConversationParticipant.Role.MODERATOR
     target_membership.save(update_fields=["role"])
+
+    # Broadcast promotion event.
+    broadcast_group_event(
+        conversation.id,
+        "group_member_promoted",
+        {
+            "conversation_id": conversation.id,
+            "user_id": target_membership.user.id,
+            "username": target_membership.user.username,
+            "role": target_membership.role,
+            "promoted_by": request.user.username,
+        },
+    )
 
     return Response(
         {"message": "Member promoted to moderator successfully."},
@@ -404,6 +467,19 @@ def demote_group_member(request, conversation_id, user_id):
     target_membership.role = ConversationParticipant.Role.MEMBER
     target_membership.save(update_fields=["role"])
 
+    # Broadcast demotion event.
+    broadcast_group_event(
+        conversation.id,
+        "group_member_demoted",
+        {
+            "conversation_id": conversation.id,
+            "user_id": target_membership.user.id,
+            "username": target_membership.user.username,
+            "role": target_membership.role,
+            "demoted_by": request.user.username,
+        },
+    )
+
     return Response(
         {"message": "Moderator demoted to member successfully."},
         status=status.HTTP_200_OK,
@@ -452,8 +528,24 @@ def update_group_name(request, conversation_id):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
+    # Capture the old name BEFORE updating.
+    old_name = conversation.name
+
+    # Update the group name.
     conversation.name = new_name
     conversation.save(update_fields=["name"])
+
+    # Broadcast group name update.
+    broadcast_group_event(
+        conversation.id,
+        "group_name_updated",
+        {
+            "conversation_id": conversation.id,
+            "old_name": old_name,  # Corrected here
+            "new_name": new_name,
+            "updated_by": request.user.username,
+        },
+    )
 
     return Response(
         {
@@ -490,6 +582,20 @@ def delete_group(request, conversation_id):
             {"error": "Only admins can delete the group."},
             status=status.HTTP_403_FORBIDDEN,
         )
+
+    # Store the group name before deletion.
+    group_name = conversation.name
+
+    # Notify all connected group members.
+    broadcast_group_event(
+        conversation.id,
+        "group_deleted",
+        {
+            "conversation_id": conversation.id,
+            "group_name": group_name,
+            "deleted_by": request.user.username,
+        },
+    )
 
     # Delete the group.
     conversation.delete()

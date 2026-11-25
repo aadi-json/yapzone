@@ -5,11 +5,10 @@ from django.utils import timezone
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
-
-from .models import Conversation, Message
+from .models import Conversation, ConversationParticipant, Message
 from .connection_manager import connection_manager
 from .presence import set_user_online, set_user_offline
-
+from django.db.models import Q
 
 class ChatConsumer(AsyncWebsocketConsumer):
     # ==========================================
@@ -371,13 +370,23 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_participant(self, user_id):
-        return Conversation.objects.filter(
+
+        # Check direct conversation membership.
+        is_direct_participant = Conversation.objects.filter(
             id=self.conversation_id,
-            participant_1_id=user_id,
-        ).exists() or Conversation.objects.filter(
-            id=self.conversation_id,
-            participant_2_id=user_id,
+            is_group=False,
+        ).filter(
+            Q(participant_1_id=user_id) |
+            Q(participant_2_id=user_id)
         ).exists()
+
+        # Check group conversation membership.
+        is_group_participant = ConversationParticipant.objects.filter(
+            conversation_id=self.conversation_id,
+            user_id=user_id,
+        ).exists()
+
+        return is_direct_participant or is_group_participant
 
     @database_sync_to_async
     def save_message(self, user_id, content, reply_to_id=None):
@@ -688,3 +697,46 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }
             )
         )
+
+    # ==========================================
+    # GROUP EVENT HANDLERS
+    # ==========================================
+
+    async def send_group_event(self, event):
+        payload = {
+            "type": event["type"],
+            **event.get("payload", {}),
+        }
+
+        await self.send(text_data=json.dumps(payload))
+
+    async def group_member_added(self, event):
+        await self.send_group_event(event)
+
+    async def group_member_removed(self, event):
+
+        await self.send_group_event(event)
+
+        # Close the removed member's WebSocket connection.
+        if self.user_id == event["payload"]["user_id"]:
+            await self.close(code=4003)
+
+    async def group_member_left(self, event):
+
+        await self.send_group_event(event)
+
+        if self.user_id == event["payload"]["user_id"]:
+            await self.close(code=4003)
+
+    async def group_member_promoted(self, event):
+        await self.send_group_event(event)
+
+    async def group_member_demoted(self, event):
+        await self.send_group_event(event)
+
+    async def group_name_updated(self, event):
+        await self.send_group_event(event)
+
+    async def group_deleted(self, event):
+        await self.send_group_event(event)
+        await self.close(code=4004)

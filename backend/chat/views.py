@@ -1026,16 +1026,32 @@ def upload_attachment(request, conversation_id, message_id):
             file_size=uploaded_file.size,
         )
 
-        # 6. Return response
-        return Response(
-            MessageAttachmentSerializer(attachment).data,
-            status=status.HTTP_201_CREATED,
-        )
+       # 6. Serialize attachment
+    attachment_data = MessageAttachmentSerializer(attachment).data
 
-    return Response(
-        serializer.errors,
-        status=status.HTTP_400_BAD_REQUEST,
+    # 7. Broadcast attachment notification
+    broadcast_group_event(
+        conversation.id,
+        "attachment_uploaded",
+        {
+            "conversation_id": conversation.id,
+            "message_id": message.id,
+            "attachment": {
+                "id": attachment.id,
+                "file_url": attachment_data["file"],
+                "file_name": attachment.file_name,
+                "file_type": attachment.file_type,
+                "file_size": attachment.file_size,
+            },
+            "uploaded_by": request.user.username,
+        },
     )
+
+    # 8. Return response
+    return Response(
+        attachment_data,
+        status=status.HTTP_201_CREATED,
+    )        
 
 class MessagePagination(CursorPagination):
     page_size = 20

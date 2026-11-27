@@ -710,6 +710,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         await self.send(text_data=json.dumps(payload))
 
+
+    async def attachment_uploaded(self, event):
+        await self.send_group_event(event)
+
     async def group_member_added(self, event):
         await self.send_group_event(event)
 

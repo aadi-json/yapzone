@@ -22,7 +22,6 @@ class MessageReplySerializer(serializers.ModelSerializer):
 # =========================
 # Message attachment serializer
 #=========================
-
 class MessageAttachmentSerializer(serializers.ModelSerializer):
 
     class Meta:
